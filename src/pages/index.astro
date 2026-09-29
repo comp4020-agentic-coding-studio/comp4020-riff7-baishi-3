@@ -1,81 +1,161 @@
 ---
+import Base from "../layouts/Base.astro";
 import { listRoster, listWeeks } from "../lib/db";
-import "../styles.css";
 
-const roster = listRoster();
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DAY_NAMES: Record<string, string> = {
+  Mon: "Monday",
+  Tue: "Tuesday",
+  Wed: "Wednesday",
+  Thu: "Thursday",
+  Fri: "Friday",
+};
+
+// Groups in weekday order, then by start time -- the db sorts day names
+// alphabetically, which would put Friday first.
+const roster = listRoster().sort(
+  (a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day) || a.startTime.localeCompare(b.startTime),
+);
 const weeks = listWeeks();
 const error = Astro.url.searchParams.get("error");
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+
+// Which teaching week is "now", in Canberra: the last week whose Monday has
+// passed. Before week 1 that's week 1; in the mid-semester break it's the
+// week before the break, flagged so the hero can say so.
+const today = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+const addDays = (iso: string, n: number) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const started = weeks.filter((w) => w.monday <= today);
+const current = started.at(-1) ?? weeks[0];
+const inBreak = current !== undefined && today > addDays(current.monday, 6) && current !== weeks.at(-1);
+const fmt = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-AU", { day: "numeric", month: "short", timeZone: "UTC" });
+
+const thisWeek = current
+  ? roster.map((group) => ({ group, session: group.sessions.find((s) => s.week === current.week)! }))
+  : [];
+const movedCount = thisWeek.filter(({ session }) => session.exceptionId !== null).length;
 ---
 
-<!doctype html>
-<html lang="en-AU">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta
-      name="description"
-      content="This course's crit-group roster: standing weekly slots and per-week reschedule exceptions, persisted in SQLite and live-synced across tabs."
-    />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>Crit roster</title>
-  </head>
-  <body>
-    <nav aria-label="site">
-      <a href="/">Roster</a>
-      <a href="/readme/">About</a>
-    </nav>
-    <main>
-      <h1>Crit roster</h1>
-      <p>
-        Every crit group's standing weekly slot, and the exceptions that
-        replace it for one teaching week at a time — rescheduling a session
-        here writes a row to SQLite instead of hand-editing the course
-        website's <code>api/crit-groups.json</code>. Open this page in two
-        tabs: rescheduling in one updates the other over the live stream.
-      </p>
-
-      {error && <p class="error" role="alert">{error}</p>}
-      <p id="stale-notice" class="notice" role="status" hidden>
-        The roster changed in another tab. Your draft below is untouched —
-        reload when you're ready to see the update.
-      </p>
-
+<Base
+  title="Crit roster"
+  description="This course's crit-group roster: standing weekly slots and per-week reschedule exceptions, persisted in SQLite and live-synced across tabs."
+  current="roster"
+>
+  <main>
+    <section class="hero" aria-labelledby="page-title">
       {
-        roster.map((group) => {
+        current && (
+          <p class="week-marker">
+            <small>{inBreak ? "Mid-semester break · next up" : "Teaching week"}</small>
+            {String(inBreak ? current.week + 1 : current.week).padStart(2, "0")}
+          </p>
+        )
+      }
+      <div>
+        {
+          current && (
+            <p class="eyebrow">
+              {fmt(current.monday)} – {fmt(addDays(current.monday, 4))} ·{" "}
+              {movedCount === 0 ? "every crit at its usual slot" : `${movedCount} of ${thisWeek.length} crits moved`}
+            </p>
+          )
+        }
+        <h1 id="page-title">Where every crit meets, week by week</h1>
+        <p class="hero-lede">
+          Each group's usual slot, plus the weeks it moves. A reschedule here is
+          saved for everyone, and any other open tab picks it up on its own.
+        </p>
+        {
+          !inBreak && thisWeek.length > 0 && (
+            <ul class="this-week" aria-label="This week's crits">
+              {thisWeek.map(({ group, session }) => (
+                <li class={session.exceptionId !== null ? "is-moved" : undefined}>
+                  <strong>{group.name}</strong>
+                  {session.day} {session.startTime}
+                  {session.exceptionId !== null && " · moved"}
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </div>
+    </section>
+
+    {error && <p class="error" role="alert">{error}</p>}
+    <p id="stale-notice" class="notice" role="status" hidden>
+      The roster changed in another tab. Your draft below is untouched —
+      reload when you're ready to see the update.
+    </p>
+
+    <div class="section-head">
+      <h2 id="groups-title">Crit groups</h2>
+      <p>{roster.length} groups · {weeks.length} teaching weeks</p>
+    </div>
+
+    <div class="placards">
+      {
+        roster.map((group, i) => {
           const exceptionSessions = group.sessions.filter((s) => s.exceptionId !== null);
           return (
-            <section aria-labelledby={`group-${group.agent}`}>
-              <h2 id={`group-${group.agent}`}>{group.name}</h2>
-              <p>
-                Standing slot: every {group.day} {group.startTime}–{group.endTime} ·{" "}
-                {group.tutorName} · {group.room}
-              </p>
-              {exceptionSessions.length === 0 ? (
-                <p>No exceptions this semester — meets at its standing slot every teaching week.</p>
-              ) : (
-                <ul>
-                  {exceptionSessions.map((session) => (
-                    <li>
-                      Week {session.week} ({session.date}): now {session.day}{" "}
-                      {session.startTime}–{session.endTime} in {session.room} —{" "}
-                      {session.reason}
-                      <form method="post" action={`/api/exceptions/${session.exceptionId}/cancel`}>
-                        <button type="submit">Cancel, back to standing slot</button>
-                      </form>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <section class="placard" aria-labelledby={`group-${group.agent}`} style={`--i: ${i}`}>
+              <div class="placard-head">
+                <h3 id={`group-${group.agent}`}>{group.name}</h3>
+                <span class="placard-day">{DAY_NAMES[group.day] ?? group.day}s</span>
+              </div>
+              <div class="placard-body">
+                <dl class="slot">
+                  <dt>Usual</dt>
+                  <dd class="time">
+                    every {group.day} {group.startTime}–{group.endTime}
+                  </dd>
+                  <dt>Tutor</dt>
+                  <dd>{group.tutorName}</dd>
+                  <dt>Room</dt>
+                  <dd>{group.room}</dd>
+                </dl>
+                {exceptionSessions.length === 0 ? (
+                  <p class="steady">No moves this semester. Meets at its usual slot every teaching week.</p>
+                ) : (
+                  <ul class="moves">
+                    {exceptionSessions.map((session) => (
+                      <li class="move">
+                        <span class="move-when">
+                          Week {session.week} · {session.date}
+                        </span>
+                        <span class="move-where">
+                          {session.day} {session.startTime}–{session.endTime} in {session.room}
+                        </span>
+                        <span class="move-why">{session.reason}</span>
+                        <form method="post" action={`/api/exceptions/${session.exceptionId}/cancel`}>
+                          <button class="btn-quiet" type="submit">
+                            Undo move
+                          </button>
+                        </form>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </section>
           );
         })
       }
+    </div>
 
-      <form method="post" action="/api/exceptions">
-        <fieldset>
-          <legend>Reschedule a session</legend>
+    <div class="section-head">
+      <h2 id="reschedule-title">Move a session</h2>
+      <p>For one teaching week only. The usual slot stays as it is.</p>
+    </div>
 
+    <form class="panel" method="post" action="/api/exceptions" aria-labelledby="reschedule-title">
+      <fieldset>
+        <legend class="visually-hidden">Reschedule a session</legend>
+
+        <div class="field">
           <label for="critGroupId">Crit group</label>
           <select id="critGroupId" name="critGroupId" required>
             {roster.map((group) => (
@@ -84,40 +164,55 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
               </option>
             ))}
           </select>
+        </div>
 
+        <div class="field">
           <label for="week">Teaching week</label>
           <select id="week" name="week" required>
             {weeks.map((w) => (
-              <option value={w.week}>
+              <option value={w.week} selected={w.week === current?.week}>
                 Week {w.week} ({w.monday})
               </option>
             ))}
           </select>
+        </div>
 
+        <div class="field">
           <label for="day">New day</label>
           <select id="day" name="day" required>
             {DAYS.map((day) => (
               <option value={day}>{day}</option>
             ))}
           </select>
+        </div>
 
+        <div class="field">
           <label for="startTime">New start</label>
           <input id="startTime" name="startTime" type="time" required />
+        </div>
 
+        <div class="field">
           <label for="endTime">New end</label>
           <input id="endTime" name="endTime" type="time" required />
+        </div>
 
+        <div class="field">
           <label for="room">Room</label>
-          <input id="room" name="room" type="text" placeholder="defaults to the group's usual room" />
+          <input id="room" name="room" type="text" placeholder="Usual room if blank" />
+        </div>
 
+        <div class="field field-wide">
           <label for="reason">Reason</label>
-          <input id="reason" name="reason" type="text" required />
+          <input id="reason" name="reason" type="text" required placeholder="e.g. Public holiday on the usual day" />
+        </div>
 
-          <button type="submit">Reschedule</button>
-        </fieldset>
-      </form>
-    </main>
-    <script>
+        <div class="panel-actions">
+          <button class="btn" type="submit">Move session</button>
+        </div>
+      </fieldset>
+    </form>
+  </main>
+  <script>
       import { createDirtyTracker, createReconnectGate } from "../lib/live-reload";
 
       // The live half of the roster: reload on any change reported over the
@@ -180,5 +275,4 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
         if (shouldReloadOnOpen()) reloadUnlessDirty();
       });
     </script>
-  </body>
-</html>
+</Base>

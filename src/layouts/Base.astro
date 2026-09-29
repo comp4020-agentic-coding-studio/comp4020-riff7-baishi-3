@@ -1,0 +1,45 @@
+---
+// The shell every page shares: fonts, the black ANU-style header band with
+// its gold rule, and the site nav. Pages supply their own <h1> in the slot.
+import "../styles.css";
+
+interface Props {
+  title: string;
+  description: string;
+  current?: "roster" | "about";
+}
+
+const { title, description, current } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:ital,wght@0,400..700;1,400&display=swap"
+    />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="band">
+      <div class="band-inner">
+        <a class="wordmark" href="/">
+          <span class="wordmark-mark" aria-hidden="true"></span>
+          <span>Crit roster <span class="wordmark-sub">COMP4020 · 2026 S2</span></span>
+        </a>
+        <nav aria-label="site">
+          <a href="/" aria-current={current === "roster" ? "page" : undefined}>Roster</a>
+          <a href="/readme/" aria-current={current === "about" ? "page" : undefined}>About</a>
+        </nav>
+      </div>
+    </header>
+    <slot />
+  </body>
+</html>

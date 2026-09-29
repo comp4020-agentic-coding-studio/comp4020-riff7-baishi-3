@@ -2,7 +2,7 @@
 // README.md, rendered: what this app is and what good looks like here,
 // published with the app. spec/readme.test.ts checks the whole of it is here.
 import * as readme from "../../README.md";
-import "../styles.css";
+import Base from "../layouts/Base.astro";
 
 const title = readme.getHeadings().find((h) => h.depth === 1)?.text ?? "README";
 
@@ -11,20 +11,6 @@ const title = readme.getHeadings().find((h) => h.depth === 1)?.text ?? "README";
 const html = (await readme.compiledContent()).replace(/(src|href)="public\//g, '$1="/');
 ---
 
-<!doctype html>
-<html lang="en-AU">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="What this crit roster app is and how it was built." />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>{title}</title>
-  </head>
-  <body>
-    <nav aria-label="site">
-      <a href="/">Roster</a>
-      <a href="/readme/">About</a>
-    </nav>
-    <main set:html={html} />
-  </body>
-</html>
+<Base title={title} description="What this crit roster app is and how it was built." current="about">
+  <main class="prose" set:html={html} />
+</Base>
