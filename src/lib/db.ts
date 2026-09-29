@@ -219,3 +219,41 @@ export function cancelException(id: number): void {
 export function getCritGroup(id: number): CritGroup | undefined {
   return db.select().from(critGroups).where(eq(critGroups.id, id)).get();
 }
+
+export function getCritGroupByAgent(agent: string): CritGroup | undefined {
+  return db.select().from(critGroups).where(eq(critGroups.agent, agent)).get();
+}
+
+export type UpdateCritGroupInput = {
+  day: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+  tutorName: string;
+};
+
+// The other write this app makes: move a group's *standing* slot, which
+// every week without an exception follows. Same boundary rules as
+// addException, so everything downstream can trust the table.
+export function updateCritGroup(id: number, input: UpdateCritGroupInput): CritGroup {
+  const group = getCritGroup(id);
+  if (!group) throw new ValidationError("unknown crit group");
+
+  if (!DAY_NAMES.has(input.day)) throw new ValidationError("day must be Mon–Fri");
+  if (!TIME_RE.test(input.startTime) || !TIME_RE.test(input.endTime)) {
+    throw new ValidationError("start and end must be a 24-hour time, e.g. 14:00");
+  }
+  if (input.startTime >= input.endTime) throw new ValidationError("end must be after start");
+
+  const room = input.room.trim();
+  if (!room) throw new ValidationError("a room is required");
+  const tutorName = input.tutorName.trim();
+  if (!tutorName) throw new ValidationError("a tutor name is required");
+
+  return db
+    .update(critGroups)
+    .set({ day: input.day, startTime: input.startTime, endTime: input.endTime, room, tutorName })
+    .where(eq(critGroups.id, id))
+    .returning()
+    .get();
+}

@@ -103,7 +103,7 @@ const movedCount = thisWeek.filter(({ session }) => session.exceptionId !== null
           return (
             <section class="placard" aria-labelledby={`group-${group.agent}`} style={`--i: ${i}`}>
               <div class="placard-head">
-                <h3 id={`group-${group.agent}`}>{group.name}</h3>
+                <h3 id={`group-${group.agent}`}><a href={`/crit/${group.agent}`}>{group.name}</a></h3>
                 <span class="placard-day">{DAY_NAMES[group.day] ?? group.day}s</span>
               </div>
               <div class="placard-body">
