@@ -224,36 +224,6 @@ h3 {
   color: var(--slate);
 }
 
-.this-week {
-  list-style: none;
-  padding: 0;
-  margin: 1.5rem 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.this-week li {
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--card);
-}
-
-.this-week li strong {
-  font-family: var(--body);
-  font-weight: 700;
-  margin-right: 0.35rem;
-}
-
-.this-week li.is-moved {
-  border-color: var(--moved);
-  background: var(--moved-wash);
-  color: var(--moved);
-}
-
 @media (max-width: 40rem) {
   .hero {
     grid-template-columns: 1fr;
@@ -595,4 +565,235 @@ select:focus-visible {
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ---------- timetable ---------- */
+
+.timetable {
+  margin-top: 2.5rem;
+}
+
+.timetable .section-head {
+  margin-top: 0;
+}
+
+/* Group swatches: assigned by position in the roster, never stored. Gold is
+   the page's own accent and teal means "moved", so neither is a group. */
+.g0 { --g: #2f6fae; }
+.g1 { --g: #8a4fa8; }
+.g2 { --g: #c0562f; }
+.g3 { --g: #3f8a4a; }
+.g4 { --g: #b23a6b; }
+.g5 { --g: #5d6a78; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .g0 { --g: #6aa6e4; }
+  :root:not([data-theme="light"]) .g1 { --g: #c190dc; }
+  :root:not([data-theme="light"]) .g2 { --g: #ec8a62; }
+  :root:not([data-theme="light"]) .g3 { --g: #7cc486; }
+  :root:not([data-theme="light"]) .g4 { --g: #ea7aa6; }
+  :root:not([data-theme="light"]) .g5 { --g: #a3b0bf; }
+}
+
+.week-strip ol {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: stretch;
+}
+
+.week-strip a {
+  display: grid;
+  place-items: center;
+  min-width: 2.6rem;
+  height: 2.6rem;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  position: relative;
+}
+
+.week-strip a:hover {
+  border-color: var(--gold);
+}
+
+.week-strip a.is-now::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+.week-strip a[aria-current="true"] {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #141414;
+}
+
+.week-strip a[aria-current="true"].is-now::after {
+  background: #141414;
+}
+
+.week-break {
+  display: grid;
+  place-items: center;
+  padding: 0 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
+
+.tt-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.tt-grid {
+  --row-h: 0.95rem;
+  display: grid;
+  grid-template-columns: 3.5rem repeat(5, minmax(7.5rem, 1fr));
+  grid-template-rows: auto repeat(var(--rows), var(--row-h));
+  min-width: 42rem;
+  position: relative;
+}
+
+.tt-corner,
+.tt-dayhead {
+  grid-row: 1;
+  border-bottom: 2px solid var(--ink);
+  padding: 0.7rem 0.75rem 0.55rem;
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 2;
+}
+
+.tt-corner {
+  grid-column: 1;
+}
+
+.tt-dayname {
+  display: block;
+  font-family: var(--display);
+  font-stretch: 125%;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.95rem;
+}
+
+.tt-daydate {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--slate);
+}
+
+.tt-hour {
+  grid-column: 1;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--slate);
+  padding: 0.15rem 0.5rem 0 0;
+  text-align: right;
+  border-top: 1px solid var(--line);
+}
+
+.tt-cell {
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.tt-block {
+  --lane: 0;
+  --lanes: 1;
+  z-index: 1;
+  margin: 2px 3px;
+  margin-left: calc(3px + (100% - 6px) * var(--lane) / var(--lanes));
+  width: calc((100% - 6px) / var(--lanes) - 2px);
+  padding: 0.35rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--g) 14%, var(--card));
+  border-left: 4px solid var(--g);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+a.tt-block:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--g) 70%, transparent);
+}
+
+.tt-name {
+  font-family: var(--display);
+  font-stretch: 112%;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.82rem;
+}
+
+.tt-time {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.tt-meta {
+  color: var(--slate);
+  font-size: 0.72rem;
+}
+
+.tt-block.is-moved {
+  background: var(--moved-wash);
+  border-left-color: var(--moved);
+  outline: 2px solid var(--moved);
+  outline-offset: -2px;
+}
+
+.tt-flag {
+  order: -1;
+  align-self: flex-start;
+  margin-bottom: 0.15rem;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--moved);
+  color: var(--card);
+  padding: 0.05rem 0.35rem;
+  border-radius: 2px;
+}
+
+.tt-ghost {
+  background: transparent;
+  border: 1.5px dashed color-mix(in srgb, var(--g) 70%, transparent);
+  border-left-width: 4px;
+  opacity: 0.8;
+}
+
+.placard .placard-head {
+  border-bottom-color: var(--g, var(--gold));
 }

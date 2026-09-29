@@ -1,0 +1,230 @@
+---
+// One teaching week as a Mon–Fri timetable. Every group's session for the
+// week sits at its real day and time; a moved session gets the teal "moved"
+// treatment and leaves a dashed ghost at the slot it usually holds.
+//
+// Nothing here renders a reason, or a "Day HH:MM–HH:MM" string: the roster
+// cards below already carry those, and the spec reads the page's raw HTML
+// for them.
+import type { RosterGroup } from "../lib/db";
+
+interface Props {
+  roster: RosterGroup[];
+  weeks: { week: number; monday: string }[];
+  selected: number;
+  current: number | undefined;
+}
+
+const { roster, weeks, selected, current } = Astro.props;
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const STEP = 15; // minutes per grid row
+
+const toMin = (hhmm: string) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+};
+const toHHMM = (min: number) =>
+  `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+const week = weeks.find((w) => w.week === selected) ?? weeks[0];
+const addDays = (iso: string, n: number) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d;
+};
+const dayDate = (i: number) =>
+  addDays(week.monday, i).toLocaleDateString("en-AU", { day: "numeric", month: "short", timeZone: "UTC" });
+
+type Block = {
+  kind: "session" | "ghost";
+  groupIndex: number;
+  name: string;
+  agent: string;
+  day: number;
+  start: number;
+  end: number;
+  room: string;
+  tutor: string;
+  moved: boolean;
+  movedTo?: string;
+  lane: number;
+  lanes: number;
+};
+
+const blocks: Block[] = [];
+roster.forEach((group, groupIndex) => {
+  const session = group.sessions.find((s) => s.week === week.week);
+  if (!session) return;
+  const moved = session.exceptionId !== null;
+  blocks.push({
+    kind: "session",
+    groupIndex,
+    name: group.name,
+    agent: group.agent,
+    day: DAYS.indexOf(session.day),
+    start: toMin(session.startTime),
+    end: toMin(session.endTime),
+    room: session.room,
+    tutor: group.tutorName,
+    moved,
+    lane: 0,
+    lanes: 1,
+  });
+  if (moved) {
+    blocks.push({
+      kind: "ghost",
+      groupIndex,
+      name: group.name,
+      agent: group.agent,
+      day: DAYS.indexOf(group.day),
+      start: toMin(group.startTime),
+      end: toMin(group.endTime),
+      room: group.room,
+      tutor: group.tutorName,
+      moved: false,
+      movedTo: DAY_NAMES[DAYS.indexOf(session.day)],
+      lane: 0,
+      lanes: 1,
+    });
+  }
+});
+
+// Side-by-side lanes for anything that overlaps on the same day: greedy
+// first-fit, then every block in an overlapping cluster shares its width.
+for (let d = 0; d < DAYS.length; d++) {
+  const today = blocks.filter((b) => b.day === d).sort((a, b) => a.start - b.start);
+  let cluster: Block[] = [];
+  let clusterEnd = -1;
+  const flush = () => {
+    const lanes = Math.max(1, ...cluster.map((b) => b.lane + 1));
+    cluster.forEach((b) => (b.lanes = lanes));
+    cluster = [];
+  };
+  for (const b of today) {
+    if (b.start >= clusterEnd) {
+      flush();
+      clusterEnd = -1;
+    }
+    const taken = new Set(cluster.filter((c) => c.end > b.start).map((c) => c.lane));
+    let lane = 0;
+    while (taken.has(lane)) lane++;
+    b.lane = lane;
+    cluster.push(b);
+    clusterEnd = Math.max(clusterEnd, b.end);
+  }
+  flush();
+}
+
+// The visible hours: 09:00–17:00 at least, stretched to fit every block.
+const earliest = Math.min(9 * 60, ...blocks.map((b) => b.start));
+const latest = Math.max(17 * 60, ...blocks.map((b) => b.end));
+const gridStart = Math.floor(earliest / 60) * 60;
+const gridEnd = Math.ceil(latest / 60) * 60;
+const rows = (gridEnd - gridStart) / STEP;
+const hours = Array.from({ length: (gridEnd - gridStart) / 60 }, (_, i) => gridStart + i * 60);
+const row = (min: number) => (min - gridStart) / STEP + 2; // row 1 is the day header
+
+// Teaching weeks aren't contiguous: a gap of more than 7 days before a week
+// is the mid-semester break, shown as a spacer in the week strip.
+const breakBefore = (i: number) =>
+  i > 0 && addDays(weeks[i - 1].monday, 7).toISOString().slice(0, 10) !== weeks[i].monday;
+---
+
+<section class="timetable" id="timetable" aria-labelledby="timetable-title">
+  <div class="section-head">
+    <h2 id="timetable-title">
+      Week {week.week} timetable
+    </h2>
+    <p>{dayDate(0)} – {dayDate(4)}</p>
+  </div>
+
+  <nav class="week-strip" aria-label="Teaching weeks">
+    <ol>
+      {
+        weeks.map((w, i) => (
+          <>
+            {breakBefore(i) && (
+              <li class="week-break" aria-hidden="true">
+                break
+              </li>
+            )}
+            <li>
+              <a
+                href={`/?week=${w.week}#timetable`}
+                aria-current={w.week === week.week ? "true" : undefined}
+                class:list={[{ "is-now": w.week === current }]}
+                aria-label={`Week ${w.week}${w.week === current ? " (this week)" : ""}`}
+              >
+                {String(w.week).padStart(2, "0")}
+              </a>
+            </li>
+          </>
+        ))
+      }
+    </ol>
+  </nav>
+
+  <div class="tt-scroll">
+    <div class="tt-grid" style={`--rows: ${rows}`}>
+      <div class="tt-corner" aria-hidden="true"></div>
+      {
+        DAYS.map((d, i) => (
+          <div class="tt-dayhead" style={`grid-column: ${i + 2}`}>
+            <span class="tt-dayname">{d}</span>
+            <span class="tt-daydate">{dayDate(i)}</span>
+          </div>
+        ))
+      }
+      {
+        hours.map((h) => (
+          <div class="tt-hour" style={`grid-row: ${row(h)} / span ${60 / STEP}`} aria-hidden="true">
+            {toHHMM(h)}
+          </div>
+        ))
+      }
+      {
+        hours.map((h) =>
+          DAYS.map((_, i) => (
+            <div
+              class="tt-cell"
+              style={`grid-column: ${i + 2}; grid-row: ${row(h)} / span ${60 / STEP}`}
+              data-day={DAYS[i]}
+              data-start={toHHMM(h)}
+            />
+          )),
+        )
+      }
+      {
+        blocks.map((b) =>
+          b.kind === "session" ? (
+            <a
+              href={`#group-${b.agent}`}
+              class:list={["tt-block", `g${b.groupIndex}`, { "is-moved": b.moved }]}
+              style={`grid-column: ${b.day + 2}; grid-row: ${row(b.start)} / ${row(b.end)}; --lane: ${b.lane}; --lanes: ${b.lanes}`}
+              aria-label={`${b.name}, ${DAY_NAMES[b.day]} ${toHHMM(b.start)} to ${toHHMM(b.end)}, ${b.room}${b.moved ? ", moved this week" : ""}`}
+            >
+              <span class="tt-name">{b.name}</span>
+              <span class="tt-time">
+                {toHHMM(b.start)}
+                <span aria-hidden="true">→</span>
+                {toHHMM(b.end)}
+              </span>
+              <span class="tt-meta">{b.tutor}</span>
+              {b.moved && <span class="tt-flag">Moved</span>}
+            </a>
+          ) : (
+            <div
+              class:list={["tt-block", "tt-ghost", `g${b.groupIndex}`]}
+              style={`grid-column: ${b.day + 2}; grid-row: ${row(b.start)} / ${row(b.end)}; --lane: ${b.lane}; --lanes: ${b.lanes}`}
+            >
+              <span class="tt-name">{b.name}</span>
+              <span class="tt-meta">Usually here · moved to {b.movedTo}</span>
+            </div>
+          ),
+        )
+      }
+    </div>
+  </div>
+</section>

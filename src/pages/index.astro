@@ -1,4 +1,5 @@
 ---
+import Timetable from "../components/Timetable.astro";
 import Base from "../layouts/Base.astro";
 import { listRoster, listWeeks } from "../lib/db";
 
@@ -38,6 +39,13 @@ const thisWeek = current
   ? roster.map((group) => ({ group, session: group.sessions.find((s) => s.week === current.week)! }))
   : [];
 const movedCount = thisWeek.filter(({ session }) => session.exceptionId !== null).length;
+
+// The timetable's week: ?week=N when it names a real teaching week, else
+// this one.
+const requested = Number(Astro.url.searchParams.get("week"));
+const selectedWeek = weeks.some((w) => w.week === requested)
+  ? requested
+  : ((inBreak ? current.week + 1 : current?.week) ?? 1);
 ---
 
 <Base
@@ -69,23 +77,12 @@ const movedCount = thisWeek.filter(({ session }) => session.exceptionId !== null
           Each group's usual slot, plus the weeks it moves. A reschedule here is
           saved for everyone, and any other open tab picks it up on its own.
         </p>
-        {
-          !inBreak && thisWeek.length > 0 && (
-            <ul class="this-week" aria-label="This week's crits">
-              {thisWeek.map(({ group, session }) => (
-                <li class={session.exceptionId !== null ? "is-moved" : undefined}>
-                  <strong>{group.name}</strong>
-                  {session.day} {session.startTime}
-                  {session.exceptionId !== null && " · moved"}
-                </li>
-              ))}
-            </ul>
-          )
-        }
       </div>
     </section>
 
     {error && <p class="error" role="alert">{error}</p>}
+
+    <Timetable roster={roster} weeks={weeks} selected={selectedWeek} current={inBreak ? undefined : current?.week} />
     <p id="stale-notice" class="notice" role="status" hidden>
       The roster changed in another tab. Your draft below is untouched —
       reload when you're ready to see the update.
@@ -101,7 +98,7 @@ const movedCount = thisWeek.filter(({ session }) => session.exceptionId !== null
         roster.map((group, i) => {
           const exceptionSessions = group.sessions.filter((s) => s.exceptionId !== null);
           return (
-            <section class="placard" aria-labelledby={`group-${group.agent}`} style={`--i: ${i}`}>
+            <section class={`placard g${i}`} aria-labelledby={`group-${group.agent}`} style={`--i: ${i}`}>
               <div class="placard-head">
                 <h3 id={`group-${group.agent}`}>{group.name}</h3>
                 <span class="placard-day">{DAY_NAMES[group.day] ?? group.day}s</span>
