@@ -209,22 +209,22 @@ const selectedWeek = weeks.some((w) => w.week === requested)
       </fieldset>
 
       <fieldset class="pick">
-        <legend>New time</legend>
+        <legend>Start time</legend>
         <div class="time-track" aria-hidden="true" data-from="08:00" data-to="19:00">
           <div class="time-track-range" hidden></div>
           {Array.from({ length: 11 }, (_, i) => (
             <span class="time-track-tick" style={`--at: ${i / 11}`}>{String(8 + i).padStart(2, "0")}</span>
           ))}
         </div>
-        <p class="pick-hint" aria-hidden="true">Drag along the bar to set the time, or type it in.</p>
+        <p class="pick-hint" aria-hidden="true">Click or drag along the bar to set the start. Every crit runs 90 minutes.</p>
         <div class="time-fields">
           <div class="field">
             <label for="startTime">Start</label>
             <input id="startTime" name="startTime" type="time" step="900" required />
           </div>
           <div class="field">
-            <label for="endTime">End</label>
-            <input id="endTime" name="endTime" type="time" step="900" required />
+            <span class="field-label" id="endTime-label">Ends (90 min)</span>
+            <output class="end-display" id="endTime-display" for="startTime" aria-labelledby="endTime-label">--:--</output>
           </div>
         </div>
       </fieldset>

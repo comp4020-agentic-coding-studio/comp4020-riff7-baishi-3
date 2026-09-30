@@ -159,6 +159,33 @@ const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export class ValidationError extends Error {}
 
+/** Every crit runs exactly this long, standing slot or one-week move. */
+export const SESSION_MINUTES = 90;
+
+/** The end of a session starting at `start` (HH:MM), or null past midnight. */
+export function sessionEnd(start: string): string | null {
+  const [h, m] = start.split(":").map(Number);
+  const end = h * 60 + m + SESSION_MINUTES;
+  if (end >= 24 * 60) return null;
+  return `${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}`;
+}
+
+// Start is required; end may be left blank and is then derived. A given end
+// has to agree with the fixed length -- it's accepted for clients that send
+// it, never as a way to change how long a crit runs.
+function resolveTimes(startTime: string, endTime: string): { startTime: string; endTime: string } {
+  if (!TIME_RE.test(startTime)) throw new ValidationError("start must be a 24-hour time, e.g. 14:00");
+  const derived = sessionEnd(startTime);
+  if (!derived) throw new ValidationError("a 90-minute crit starting then would run past midnight");
+  if (endTime === "") return { startTime, endTime: derived };
+  if (!TIME_RE.test(endTime)) throw new ValidationError("end must be a 24-hour time, e.g. 15:30");
+  if (startTime >= endTime) throw new ValidationError("end must be after start");
+  if (endTime !== derived) {
+    throw new ValidationError(`crits run ${SESSION_MINUTES} minutes, so one starting at ${startTime} ends at ${derived}`);
+  }
+  return { startTime, endTime };
+}
+
 export type AddExceptionInput = {
   critGroupId: number;
   week: number;
@@ -180,10 +207,7 @@ export function addException(input: AddExceptionInput): Exception {
   if (!week) throw new ValidationError("not a teaching week this semester");
 
   if (!DAY_NAMES.has(input.day)) throw new ValidationError("day must be Mon–Fri");
-  if (!TIME_RE.test(input.startTime) || !TIME_RE.test(input.endTime)) {
-    throw new ValidationError("start and end must be a 24-hour time, e.g. 14:00");
-  }
-  if (input.startTime >= input.endTime) throw new ValidationError("end must be after start");
+  const { startTime, endTime } = resolveTimes(input.startTime, input.endTime);
 
   const reason = input.reason.trim();
   if (!reason) throw new ValidationError("a reason is required");
@@ -203,8 +227,8 @@ export function addException(input: AddExceptionInput): Exception {
       critGroupId: input.critGroupId,
       week: input.week,
       day: input.day,
-      startTime: input.startTime,
-      endTime: input.endTime,
+      startTime,
+      endTime,
       room: input.room.trim() || null,
       reason,
     })
@@ -240,10 +264,7 @@ export function updateCritGroup(id: number, input: UpdateCritGroupInput): CritGr
   if (!group) throw new ValidationError("unknown crit group");
 
   if (!DAY_NAMES.has(input.day)) throw new ValidationError("day must be Mon–Fri");
-  if (!TIME_RE.test(input.startTime) || !TIME_RE.test(input.endTime)) {
-    throw new ValidationError("start and end must be a 24-hour time, e.g. 14:00");
-  }
-  if (input.startTime >= input.endTime) throw new ValidationError("end must be after start");
+  const { startTime, endTime } = resolveTimes(input.startTime, input.endTime);
 
   const room = input.room.trim();
   if (!room) throw new ValidationError("a room is required");
@@ -252,7 +273,7 @@ export function updateCritGroup(id: number, input: UpdateCritGroupInput): CritGr
 
   return db
     .update(critGroups)
-    .set({ day: input.day, startTime: input.startTime, endTime: input.endTime, room, tutorName })
+    .set({ day: input.day, startTime, endTime, room, tutorName })
     .where(eq(critGroups.id, id))
     .returning()
     .get();

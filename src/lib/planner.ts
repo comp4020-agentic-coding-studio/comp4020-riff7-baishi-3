@@ -14,12 +14,12 @@ export const toHHMM = (min: number): string =>
 export const snap = (min: number, step = 15, lo = 0, hi = 24 * 60): number =>
   Math.min(hi, Math.max(lo, Math.round(min / step) * step));
 
-/** An ordered [start, end) range from two drag points, at least one step long. */
-export const rangeFrom = (a: number, b: number, step = 15): [number, number] => {
-  const start = Math.min(a, b);
-  const end = Math.max(a, b);
-  return [start, Math.max(end, start + step)];
-};
+/** Every crit runs this long; the server enforces it (SESSION_MINUTES in db.ts). */
+export const SESSION_MINUTES = 90;
+
+/** The latest start that still ends inside the day. */
+export const clampStart = (min: number, lo = 0, hi = 24 * 60): number =>
+  Math.min(hi - SESSION_MINUTES, Math.max(lo, min));
 
 type Hooks = {
   /** Called whenever a gesture writes into the main form, so live-reload can
@@ -44,14 +44,14 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
   const shownWeek = timetable.dataset.week ?? "";
 
   const startInput = form.querySelector<HTMLInputElement>("#startTime")!;
-  const endInput = form.querySelector<HTMLInputElement>("#endTime")!;
+  const endOut = form.querySelector<HTMLOutputElement>("#endTime-display");
+  const endValue = () => (startInput.value ? toHHMM(toMin(startInput.value) + SESSION_MINUTES) : "");
   const summary = document.querySelector<HTMLOutputElement>("#move-summary");
 
   const radio = (name: string, value: string) =>
     form.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
   const checked = (name: string) => form.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`);
 
-  const selectedDuration = () => Number(checked("critGroupId")?.dataset.duration ?? 90);
 
   // ---------- the time track ----------
   const track = form.querySelector<HTMLElement>(".time-track");
@@ -61,13 +61,14 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
 
   const paintTrack = () => {
     if (!track || !trackRange) return;
-    if (!startInput.value || !endInput.value) {
+    if (endOut) endOut.textContent = endValue() || "--:--";
+    if (!startInput.value) {
       trackRange.hidden = true;
       return;
     }
     const span = trackTo - trackFrom;
     const s = (Math.max(trackFrom, toMin(startInput.value)) - trackFrom) / span;
-    const e = (Math.min(trackTo, toMin(endInput.value)) - trackFrom) / span;
+    const e = (Math.min(trackTo, toMin(endValue())) - trackFrom) / span;
     trackRange.hidden = e <= s;
     trackRange.style.left = `${s * 100}%`;
     trackRange.style.width = `${(e - s) * 100}%`;
@@ -82,7 +83,7 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
       group ?? "Pick a group",
       week ? `week ${week}` : null,
       day ? DAY_NAMES[day] : null,
-      startInput.value && endInput.value ? `${startInput.value} to ${endInput.value}` : null,
+      startInput.value ? `${startInput.value} to ${endValue()}` : null,
     ].filter(Boolean);
     summary.textContent = bits.join(" · ");
   };
@@ -92,7 +93,7 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
     paintSummary();
   };
 
-  const fill = (values: { group?: string; week?: string; day?: string; start?: number; end?: number }) => {
+  const fill = (values: { group?: string; week?: string; day?: string; start?: number }) => {
     if (values.group) radio("critGroupId", values.group)!.checked = true;
     if (values.week) {
       const w = radio("week", values.week);
@@ -100,7 +101,6 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
     }
     if (values.day) radio("day", values.day)!.checked = true;
     if (values.start !== undefined) startInput.value = toHHMM(values.start);
-    if (values.end !== undefined) endInput.value = toHHMM(values.end);
     repaint();
     onDraft();
   };
@@ -115,23 +115,19 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
       const frac = (clientX - r.left) / r.width;
       return snap(trackFrom + frac * (trackTo - trackFrom), 15, trackFrom, trackTo);
     };
-    let anchor: number | null = null;
+    // the bar sets the start; the 90-minute block follows the pointer
+    let dragging = false;
+    const place = (clientX: number) => fill({ start: clampStart(minuteAt(clientX), trackFrom, trackTo) });
     track.addEventListener("pointerdown", (e) => {
-      anchor = minuteAt(e.clientX);
+      dragging = true;
       track.setPointerCapture(e.pointerId);
-      fill({ start: anchor, end: anchor + 15 });
+      place(e.clientX);
     });
     track.addEventListener("pointermove", (e) => {
-      if (anchor === null) return;
-      const [s, en] = rangeFrom(anchor, minuteAt(e.clientX));
-      fill({ start: s, end: en });
+      if (dragging) place(e.clientX);
     });
     const release = () => {
-      // a plain click on the bar sets a slot as long as the chosen group's
-      if (anchor !== null && toMin(endInput.value) - toMin(startInput.value) <= 15) {
-        fill({ end: Math.min(trackTo, anchor + selectedDuration()) });
-      }
-      anchor = null;
+      dragging = false;
     };
     track.addEventListener("pointerup", release);
     track.addEventListener("pointercancel", release);
@@ -171,31 +167,22 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
     setTimeout(() => form.classList.remove("is-primed"), 1200);
   };
 
-  // ---------- click or drag on empty slots: prime the form ----------
-  let sweep: { day: string; anchor: number } | null = null;
+  // ---------- click an empty slot: prime the form there ----------
+  // Mouse clicks land on the exact quarter hour under the pointer; touch
+  // taps start on the hour, since a fingertip isn't that precise.
+  let pending: { day: string; start: number } | null = null;
   grid.addEventListener("pointerdown", (e) => {
     if ((e.target as HTMLElement).closest(".tt-block")) return;
     const p = pointAt(e.clientX, e.clientY);
     if (!p) return;
-    // hour-cell clicks start on the hour; drags take the exact point
-    sweep = { day: p.day, anchor: toMin(p.cell.dataset.start!) };
-    if (e.pointerType === "mouse") sweep.anchor = p.minute;
-    showSelection(p.day, sweep.anchor, sweep.anchor + selectedDuration());
+    const start = clampStart(e.pointerType === "mouse" ? p.minute : toMin(p.cell.dataset.start!));
+    pending = { day: p.day, start };
+    showSelection(p.day, start, start + SESSION_MINUTES);
   });
-  grid.addEventListener("pointermove", (e) => {
-    if (!sweep || e.buttons === 0) return;
-    const p = pointAt(e.clientX, e.clientY);
-    if (!p) return;
-    const [s, en] = rangeFrom(sweep.anchor, p.minute);
-    showSelection(sweep.day, s, en);
-  });
-  grid.addEventListener("pointerup", (e) => {
-    if (!sweep) return;
-    const p = pointAt(e.clientX, e.clientY);
-    let [s, en] = rangeFrom(sweep.anchor, p?.minute ?? sweep.anchor);
-    if (en - s <= 15) en = s + selectedDuration(); // a click, not a sweep
-    fill({ week: shownWeek, day: sweep.day, start: s, end: en });
-    sweep = null;
+  grid.addEventListener("pointerup", () => {
+    if (!pending) return;
+    fill({ week: shownWeek, day: pending.day, start: pending.start });
+    pending = null;
     setTimeout(hideSelection, 900);
     scrollToForm();
   });
@@ -232,7 +219,7 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
 
   for (const block of grid.querySelectorAll<HTMLAnchorElement>("a.tt-block")) {
     let drag: { x: number; y: number; grabOffset: number; moved: boolean } | null = null;
-    const duration = Number(block.dataset.duration);
+    const duration = SESSION_MINUTES;
 
     block.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
@@ -253,7 +240,7 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
       block.style.translate = `${dx}px ${dy}px`;
       const p = pointAt(e.clientX, e.clientY);
       if (p) {
-        const start = snap(p.minute - drag.grabOffset, 15);
+        const start = clampStart(snap(p.minute - drag.grabOffset, 15));
         showSelection(p.day, start, start + duration);
       }
     });
@@ -273,7 +260,7 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
         hideSelection();
         return;
       }
-      const start = snap(p.minute - grabOffset, 15);
+      const start = clampStart(snap(p.minute - grabOffset, 15));
       openDialog(block.dataset.groupId!, block.dataset.name!, p.day, start, start + duration);
     };
     block.addEventListener("pointerup", (e) => finish(e, true));

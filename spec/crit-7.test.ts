@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, inject, it } from "vitest";
 import { createDirtyTracker, createReconnectGate } from "../src/lib/live-reload";
-import { sessionDate } from "../src/lib/db";
-import { rangeFrom, snap, toHHMM, toMin } from "../src/lib/planner";
+import { SESSION_MINUTES as DB_SESSION_MINUTES, sessionDate, sessionEnd } from "../src/lib/db";
+import { SESSION_MINUTES, clampStart, snap, toHHMM, toMin } from "../src/lib/planner";
 
 // This week's brief: model a slice of a real ANU system, wired end to end,
 // with a core flow that survives a reload. The roster's core flow is
@@ -99,7 +99,7 @@ describe("rescheduling the same week twice", () => {
         week: "11",
         day: "Tue",
         startTime: "09:00",
-        endTime: "10:00",
+        endTime: "10:30",
         room: "",
         reason: "first reschedule",
       }),
@@ -111,7 +111,7 @@ describe("rescheduling the same week twice", () => {
         week: "11",
         day: "Fri",
         startTime: "13:00",
-        endTime: "14:00",
+        endTime: "14:30",
         room: "",
         reason: "second reschedule",
       }),
@@ -122,7 +122,7 @@ describe("rescheduling the same week twice", () => {
     const html = await (await fetch(baseUrl)).text();
     expect(html).not.toContain("first reschedule");
     expect(html).toContain("second reschedule");
-    expect(html).toContain("Fri 13:00–14:00");
+    expect(html).toContain("Fri 13:00–14:30");
     // exactly one row for that group/week, not one for each reschedule
     expect(html.match(/second reschedule/g)?.length).toBe(1);
   });
@@ -137,7 +137,7 @@ describe("validation", () => {
         week: "5",
         day: "Thu",
         startTime: "09:00",
-        endTime: "10:00",
+        endTime: "10:30",
         room: "",
         reason: "",
       }),
@@ -147,7 +147,7 @@ describe("validation", () => {
 
     const html = await (await fetch(baseUrl)).text();
     // week 5's standing Wednesday slot should be untouched
-    expect(html).not.toContain("Thu 09:00–10:00");
+    expect(html).not.toContain("Thu 09:00–10:30");
   });
 
   it("rejects an end time that isn't after the start time", async () => {
@@ -295,7 +295,7 @@ describe("cancelling a reschedule", () => {
         week: "3",
         day: "Fri",
         startTime: "09:00",
-        endTime: "10:00",
+        endTime: "10:30",
         room: "",
         reason: "to be cancelled",
       }),
@@ -334,9 +334,9 @@ describe("planner time helpers", () => {
     expect(snap(20 * 60, 15, 8 * 60, 19 * 60)).toBe(19 * 60);
   });
 
-  it("orders a drag range either way and never makes it empty", () => {
-    expect(rangeFrom(660, 600)).toEqual([600, 660]);
-    expect(rangeFrom(600, 600)).toEqual([600, 615]);
+  it("never lets a dragged start push the 90-minute block off the bar", () => {
+    expect(clampStart(18 * 60 + 45, 8 * 60, 19 * 60)).toBe(17 * 60 + 30);
+    expect(clampStart(7 * 60, 8 * 60, 19 * 60)).toBe(8 * 60);
   });
 });
 
@@ -472,7 +472,7 @@ describe("cancelling from the crit page", () => {
   const addAndFind = async (week: string, reason: string) => {
     await post(
       "/api/exceptions",
-      new URLSearchParams({ critGroupId: "6", week, day: "Tue", startTime: "11:00", endTime: "12:00", room: "", reason }),
+      new URLSearchParams({ critGroupId: "6", week, day: "Tue", startTime: "11:00", endTime: "12:30", room: "", reason }),
     );
     const { html } = await critPage("liuru");
     // anchor on the history entry, not the timeline cell's title (which
@@ -498,5 +498,57 @@ describe("cancelling from the crit page", () => {
       const res = await post(`/api/exceptions/${id}/cancel`, new URLSearchParams({ redirect }));
       expect(res.headers.get("location")).toBe("/");
     }
+  });
+});
+
+describe("fixed 90-minute crits", () => {
+  it("agrees between client and server", () => {
+    expect(SESSION_MINUTES).toBe(90);
+    expect(DB_SESSION_MINUTES).toBe(90);
+    expect(sessionEnd("14:00")).toBe("15:30");
+    expect(sessionEnd("23:00")).toBeNull();
+  });
+
+  it("rejects a move whose end doesn't make it 90 minutes", async () => {
+    const res = await post(
+      "/api/exceptions",
+      new URLSearchParams({
+        critGroupId: "3",
+        week: "10",
+        day: "Thu",
+        startTime: "11:00",
+        endTime: "13:00",
+        room: "",
+        reason: "two-hour probe",
+      }),
+    );
+    expect(res.headers.get("location")).toMatch(/^\/\?error=/);
+    const html = await (await fetch(baseUrl)).text();
+    expect(html).not.toContain("two-hour probe");
+  });
+
+  it("derives the end when the form leaves it out", async () => {
+    const res = await post(
+      "/api/exceptions",
+      new URLSearchParams({
+        critGroupId: "3",
+        week: "10",
+        day: "Fri",
+        startTime: "10:15",
+        room: "",
+        reason: "derived-end probe",
+      }),
+    );
+    expect(res.headers.get("location")).toBe("/");
+    const html = await (await fetch(baseUrl)).text();
+    expect(html).toContain("Fri 10:15–11:45");
+  });
+
+  it("rejects a standing slot that isn't 90 minutes", async () => {
+    const res = await post(
+      "/api/groups/6",
+      new URLSearchParams({ day: "Thu", startTime: "16:00", endTime: "17:00", room: "Somewhere", tutorName: "Bill McAlister" }),
+    );
+    expect(res.headers.get("location")).toMatch(/\?error=/);
   });
 });

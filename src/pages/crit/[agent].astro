@@ -167,8 +167,10 @@ const moves = group.sessions.filter((s) => s.exceptionId !== null);
         </div>
 
         <div class="field">
-          <label for="endTime">End</label>
-          <input id="endTime" name="endTime" type="time" required value={group.endTime} />
+          <span class="field-label" id="endTime-label">Ends (90 min)</span>
+          <output class="end-display" id="endTime-display" for="startTime" aria-labelledby="endTime-label">
+            {group.endTime}
+          </output>
         </div>
 
         <div class="field">
@@ -189,6 +191,14 @@ const moves = group.sessions.filter((s) => s.exceptionId !== null);
   </main>
   <script>
     import { createDirtyTracker, createReconnectGate } from "../../lib/live-reload";
+    import { SESSION_MINUTES, toHHMM, toMin } from "../../lib/planner";
+
+    // The end is derived, never entered: crits run a fixed 90 minutes.
+    const startField = document.querySelector<HTMLInputElement>("#startTime");
+    const endDisplay = document.querySelector<HTMLOutputElement>("#endTime-display");
+    startField?.addEventListener("input", () => {
+      if (endDisplay && startField.value) endDisplay.textContent = toHHMM(toMin(startField.value) + SESSION_MINUTES);
+    });
 
     // Same live-sync contract as the roster page: reload when another tab
     // changes anything, unless this tab has an unsaved edit to the slot form,
