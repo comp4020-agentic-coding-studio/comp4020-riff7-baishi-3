@@ -552,3 +552,54 @@ describe("fixed 90-minute crits", () => {
     expect(res.headers.get("location")).toMatch(/\?error=/);
   });
 });
+
+describe("room clashes", () => {
+  // Two groups can't be in the same room at overlapping times; the same
+  // time in a different room is fine.
+  it("rejects a move onto another group's room and time that week", async () => {
+    const res = await post(
+      "/api/exceptions",
+      new URLSearchParams({
+        critGroupId: "3", // baishi, onto dachi's Wed 10:30 in 4.03
+        week: "12",
+        day: "Wed",
+        startTime: "11:00",
+        room: "",
+        reason: "clash probe",
+      }),
+    );
+    const location = res.headers.get("location") ?? "";
+    expect(location).toMatch(/^\/\?error=/);
+    expect(decodeURIComponent(location)).toContain("Dachi");
+    const html = await (await fetch(baseUrl)).text();
+    expect(html).not.toContain("clash probe");
+  });
+
+  it("allows the same time in a different room", async () => {
+    const res = await post(
+      "/api/exceptions",
+      new URLSearchParams({
+        critGroupId: "3",
+        week: "12",
+        day: "Wed",
+        startTime: "11:00",
+        room: "Hanna Neumann Building (145), Room 1.33",
+        reason: "other-room probe",
+      }),
+    );
+    expect(res.headers.get("location")).toBe("/");
+  });
+
+  it("rejects a usual slot on top of another group's usual slot", async () => {
+    const res = await post(
+      "/api/groups/6",
+      new URLSearchParams({
+        day: "Mon",
+        startTime: "14:30",
+        room: "Marie Reay Building (155), Room 4.03",
+        tutorName: "Bill McAlister",
+      }),
+    );
+    expect(decodeURIComponent(res.headers.get("location") ?? "")).toContain("Shitao");
+  });
+});

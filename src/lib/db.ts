@@ -199,6 +199,18 @@ export type AddExceptionInput = {
 // The one write this app makes to a group's schedule: reschedule a single
 // week's session. Validated at this boundary — everything downstream (the
 // roster view, the derived date) trusts what's in the table.
+// Two sessions clash when they share a day and a room and their times
+// overlap. Different rooms at the same time are fine: tutors split up.
+type Slot = { day: string; startTime: string; endTime: string; room: string };
+const overlaps = (a: Slot, b: Slot) =>
+  a.day === b.day && a.room === b.room && a.startTime < b.endTime && b.startTime < a.endTime;
+
+function clashError(other: string, slot: Slot, when: string): ValidationError {
+  return new ValidationError(
+    `that clashes with ${other}, which is in ${slot.room} ${slot.day} ${slot.startTime}–${slot.endTime} ${when}`,
+  );
+}
+
 export function addException(input: AddExceptionInput): Exception {
   const group = db.select().from(critGroups).where(eq(critGroups.id, input.critGroupId)).get();
   if (!group) throw new ValidationError("unknown crit group");
@@ -211,6 +223,15 @@ export function addException(input: AddExceptionInput): Exception {
 
   const reason = input.reason.trim();
   if (!reason) throw new ValidationError("a reason is required");
+
+  const proposed = { day: input.day, startTime, endTime, room: input.room.trim() || group.room };
+  for (const other of listRoster()) {
+    if (other.id === group.id) continue;
+    const session = other.sessions.find((s) => s.week === input.week);
+    if (session && overlaps(proposed, session)) {
+      throw clashError(other.name, session, `in week ${input.week}`);
+    }
+  }
 
   const existing = db
     .select()
@@ -270,6 +291,13 @@ export function updateCritGroup(id: number, input: UpdateCritGroupInput): CritGr
   if (!room) throw new ValidationError("a room is required");
   const tutorName = input.tutorName.trim();
   if (!tutorName) throw new ValidationError("a tutor name is required");
+
+  // Standing slots are checked against other standing slots; a one-week
+  // move elsewhere doesn't stop a group taking a slot for the semester.
+  const proposed = { day: input.day, startTime, endTime, room };
+  for (const other of db.select().from(critGroups).all()) {
+    if (other.id !== id && overlaps(proposed, other)) throw clashError(other.name, other, "every week");
+  }
 
   return db
     .update(critGroups)
