@@ -1002,8 +1002,17 @@ a.tt-block:hover {
 
 a.tt-block {
   cursor: grab;
-  touch-action: none;
+  /* scrolling stays possible until a press-and-hold lifts the block */
+  touch-action: manipulation;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+a.tt-block.is-armed {
+  transform: scale(1.04);
+  box-shadow: 0 10px 24px -8px rgb(0 0 0 / 0.55);
+  z-index: 5;
 }
 
 a.tt-block.is-dragging {
@@ -1011,6 +1020,7 @@ a.tt-block.is-dragging {
   z-index: 5;
   opacity: 0.85;
   box-shadow: 0 12px 28px -10px rgb(0 0 0 / 0.5);
+  transform: none;
   transition: none;
 }
 

@@ -179,6 +179,11 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
     pending = { day: p.day, start };
     showSelection(p.day, start, start + SESSION_MINUTES);
   });
+  // a swipe that turned into a scroll isn't a tap on the slot
+  grid.addEventListener("pointercancel", () => {
+    pending = null;
+    hideSelection();
+  });
   grid.addEventListener("pointerup", () => {
     if (!pending) return;
     fill({ week: shownWeek, day: pending.day, start: pending.start });
@@ -217,23 +222,66 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
     onDialog(false);
   });
 
+  // Touch has to press and hold before a block lifts, so an ordinary swipe
+  // over the timetable still scrolls the page. Mouse drags start at once.
+  const HOLD_MS = 350;
+  const SLOP_PX = 8;
+
   for (const block of grid.querySelectorAll<HTMLAnchorElement>("a.tt-block")) {
-    let drag: { x: number; y: number; grabOffset: number; moved: boolean } | null = null;
+    let drag: { x: number; y: number; grabOffset: number; moved: boolean; armed: boolean } | null = null;
+    let holdTimer: ReturnType<typeof setTimeout> | undefined;
     const duration = SESSION_MINUTES;
+
+    const disarm = () => {
+      clearTimeout(holdTimer);
+      block.classList.remove("is-armed");
+    };
 
     block.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       const r = block.getBoundingClientRect();
       // keep the block's top edge where it was relative to the grab point
       const minutesPerPx = duration / r.height;
-      drag = { x: e.clientX, y: e.clientY, grabOffset: (e.clientY - r.top) * minutesPerPx, moved: false };
-      block.setPointerCapture(e.pointerId);
+      const touch = e.pointerType !== "mouse";
+      drag = { x: e.clientX, y: e.clientY, grabOffset: (e.clientY - r.top) * minutesPerPx, moved: false, armed: !touch };
+      if (touch) {
+        holdTimer = setTimeout(() => {
+          if (!drag) return;
+          drag.armed = true;
+          block.classList.add("is-armed");
+          block.setPointerCapture(e.pointerId);
+          navigator.vibrate?.(12);
+        }, HOLD_MS);
+      } else {
+        block.setPointerCapture(e.pointerId);
+      }
+    });
+
+    // Once a hold has armed the block, stop the browser from scrolling
+    // under the finger; before that, scrolling wins.
+    block.addEventListener(
+      "touchmove",
+      (e) => {
+        if (drag?.armed) e.preventDefault();
+      },
+      { passive: false },
+    );
+    block.addEventListener("contextmenu", (e) => {
+      if (drag) e.preventDefault();
     });
 
     block.addEventListener("pointermove", (e) => {
       if (!drag) return;
       const dx = e.clientX - drag.x;
       const dy = e.clientY - drag.y;
+      if (!drag.armed) {
+        // moved before the hold finished: this was a scroll, not a drag
+        if (Math.hypot(dx, dy) > SLOP_PX) {
+          disarm();
+          drag = null;
+        }
+        return;
+      }
       if (!drag.moved && Math.hypot(dx, dy) < 6) return;
       drag.moved = true;
       block.classList.add("is-dragging");
@@ -246,13 +294,19 @@ export function initPlanner({ onDraft, onDialog }: Hooks): void {
     });
 
     const finish = (e: PointerEvent, commit: boolean) => {
+      disarm();
       if (!drag) return;
       const wasDrag = drag.moved;
+      const wasHeld = drag.armed && e.pointerType !== "mouse";
       const grabOffset = drag.grabOffset;
       drag = null;
       block.classList.remove("is-dragging");
       block.style.translate = "";
-      if (!wasDrag) return; // a plain click: let the link do its job
+      if (!wasDrag) {
+        // a hold that was let go without moving isn't a tap on the link
+        if (wasHeld) block.addEventListener("click", (ev) => ev.preventDefault(), { once: true });
+        return; // a plain click: let the link do its job
+      }
       // swallow the click that follows a drag
       block.addEventListener("click", (ev) => ev.preventDefault(), { once: true });
       const p = commit ? pointAt(e.clientX, e.clientY) : null;
