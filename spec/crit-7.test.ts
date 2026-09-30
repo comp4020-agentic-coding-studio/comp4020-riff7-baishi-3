@@ -355,3 +355,148 @@ describe("visual reschedule form", () => {
     expect(html).toContain("tt-ghost");
   });
 });
+
+// ---------- the per-group crit page (/crit/[agent]) ----------
+
+const critPage = async (agent: string) => {
+  const res = await fetch(new URL(`/crit/${agent}`, baseUrl));
+  return { status: res.status, html: await res.text() };
+};
+
+describe("crit group page", () => {
+  it("renders 200 with the group's name as its heading", async () => {
+    const { status, html } = await critPage("baishi");
+    expect(status).toBe(200);
+    expect(html).toMatch(/<h1[^>]*>Baishi<\/h1>/);
+    expect(html).toContain("Tom Griffiths");
+  });
+
+  it("404s for a group that doesn't exist", async () => {
+    const { status } = await critPage("no-such-group");
+    expect(status).toBe(404);
+  });
+
+  it("is linked from each placard on the roster", async () => {
+    const html = await (await fetch(baseUrl)).text();
+    expect(html).toContain('href="/crit/baishi"');
+    expect(html).toContain('href="/crit/liuru"');
+  });
+
+  it("lays out every teaching week and marks the moved ones", async () => {
+    // bada's week 9 move is seeded, so its timeline has a moved cell
+    const { html } = await critPage("bada");
+    expect(html.match(/class="tl-week/g)?.length).toBe(12);
+    expect(html).toMatch(/class="tl-week[^"]*is-moved/);
+    expect(html).toContain("ACT Labour Day public holiday");
+  });
+});
+
+describe("editing a group's standing slot", () => {
+  // liuru (critGroupId 6): no earlier test asserts on its standing slot
+  // text, and moving it to Thu 16:00-17:30 avoids the "Thu 09:00–10:00"
+  // absence check above.
+  const room = `Spec Room ${process.hrtime.bigint()}`;
+
+  it("persists a valid edit and redirects back to the crit page", async () => {
+    const res = await post(
+      "/api/groups/6",
+      new URLSearchParams({
+        day: "Thu",
+        startTime: "16:00",
+        endTime: "17:30",
+        room,
+        tutorName: "Bill McAlister",
+      }),
+    );
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/crit/liuru");
+
+    const { html } = await critPage("liuru");
+    expect(html).toContain("every Thu 16:00–17:30");
+    expect(html).toContain(room);
+  });
+
+  it("rejects an end time that isn't after the start, with ?error=", async () => {
+    const res = await post(
+      "/api/groups/6",
+      new URLSearchParams({ day: "Thu", startTime: "17:00", endTime: "16:00", room, tutorName: "Bill McAlister" }),
+    );
+    expect(res.status).toBe(303);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toMatch(/^\/crit\/liuru\?error=/);
+
+    const page = await fetch(new URL(location, baseUrl));
+    expect(await page.text()).toMatch(/role="alert"[^>]*>end must be after start/);
+    // the slot is untouched
+    expect((await critPage("liuru")).html).toContain("every Thu 16:00–17:30");
+  });
+
+  it("rejects a weekend day, with ?error=", async () => {
+    const res = await post(
+      "/api/groups/6",
+      new URLSearchParams({ day: "Sat", startTime: "10:00", endTime: "11:00", room, tutorName: "Bill McAlister" }),
+    );
+    expect(res.headers.get("location")).toMatch(/^\/crit\/liuru\?error=/);
+  });
+
+  it("rejects an empty tutor or room, with ?error=", async () => {
+    const res = await post(
+      "/api/groups/6",
+      new URLSearchParams({ day: "Thu", startTime: "16:00", endTime: "17:30", room: " ", tutorName: "" }),
+    );
+    expect(res.headers.get("location")).toMatch(/^\/crit\/liuru\?error=/);
+  });
+
+  it("broadcasts the change over the SSE stream", async () => {
+    const stream = await fetch(new URL("/api/events", baseUrl));
+    const reader = stream.body?.getReader();
+    if (!reader) throw new Error("no response body");
+
+    await post(
+      "/api/groups/6",
+      new URLSearchParams({ day: "Thu", startTime: "16:00", endTime: "17:30", room, tutorName: "Bill McAlister" }),
+    );
+
+    const decoder = new TextDecoder();
+    let received = "";
+    while (!received.includes("data: changed")) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error("stream ended before the event arrived");
+      received += decoder.decode(value, { stream: true });
+    }
+    await reader.cancel();
+  }, 10_000);
+});
+
+describe("cancelling from the crit page", () => {
+  const addAndFind = async (week: string, reason: string) => {
+    await post(
+      "/api/exceptions",
+      new URLSearchParams({ critGroupId: "6", week, day: "Tue", startTime: "11:00", endTime: "12:00", room: "", reason }),
+    );
+    const { html } = await critPage("liuru");
+    // anchor on the history entry, not the timeline cell's title (which
+    // comes earlier, before other weeks' cancel forms)
+    const match = html.match(new RegExp(`class="move-why">${reason}</span>[^]*?/api/exceptions/(\\d+)/cancel`));
+    if (!match) throw new Error(`could not find the cancel form for "${reason}" on the crit page`);
+    // the crit page's cancel form carries its own path back
+    expect(html).toContain('name="redirect" value="/crit/liuru"');
+    return match[1];
+  };
+
+  it("redirects back to the crit page it was submitted from", async () => {
+    const id = await addAndFind("12", "crit page cancel");
+    const res = await post(`/api/exceptions/${id}/cancel`, new URLSearchParams({ redirect: "/crit/liuru" }));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/crit/liuru");
+    expect((await critPage("liuru")).html).not.toContain("crit page cancel");
+  });
+
+  it("ignores an off-site or non-crit redirect and goes to the roster", async () => {
+    for (const redirect of ["https://evil.example/crit/liuru", "//evil.example/crit/liuru", "/readme/"]) {
+      const id = await addAndFind("10", "off-site probe");
+      const res = await post(`/api/exceptions/${id}/cancel`, new URLSearchParams({ redirect }));
+      expect(res.headers.get("location")).toBe("/");
+    }
+  });
+});

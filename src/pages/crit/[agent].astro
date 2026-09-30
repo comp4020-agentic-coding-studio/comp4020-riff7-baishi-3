@@ -1,0 +1,227 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listRoster, listWeeks } from "../../lib/db";
+
+// One crit group's own page: its standing slot, the whole semester laid out
+// week by week, every move it has had, and the form to change the slot
+// itself. Everything is read fresh from SQLite per request, like the roster.
+const { agent } = Astro.params;
+const group = listRoster().find((g) => g.agent === agent);
+if (!group) {
+  return new Response("No crit group by that name", { status: 404 });
+}
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DAY_NAMES: Record<string, string> = {
+  Mon: "Monday",
+  Tue: "Tuesday",
+  Wed: "Wednesday",
+  Thu: "Thursday",
+  Fri: "Friday",
+};
+
+const weeks = listWeeks();
+const error = Astro.url.searchParams.get("error");
+const self = `/crit/${group.agent}`;
+
+// The current teaching week, computed the same way index.astro does: the
+// last week whose Monday has passed, in Canberra time.
+const today = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+const current = weeks.filter((w) => w.monday <= today).at(-1) ?? weeks[0];
+
+const fmt = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-AU", { day: "numeric", month: "short", timeZone: "UTC" });
+
+// A gap of more than a week between consecutive Mondays is the
+// mid-semester break; the timeline marks it rather than hiding it.
+const mondays = new Map(weeks.map((w) => [w.week, w.monday]));
+const daysBetween = (a: string, b: string) =>
+  (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000;
+const breakBefore = (week: number) => {
+  const prev = mondays.get(week - 1);
+  const mine = mondays.get(week);
+  return prev !== undefined && mine !== undefined && daysBetween(prev, mine) > 7;
+};
+
+const moves = group.sessions.filter((s) => s.exceptionId !== null);
+---
+
+<Base
+  title={`${group.name} crit · Crit roster`}
+  description={`The ${group.name} crit group's standing slot, semester timeline and reschedule history.`}
+  current="roster"
+>
+  <main class="crit-page">
+    <section class="crit-hero" aria-labelledby="page-title">
+      <p class="eyebrow"><a href="/">Roster</a> / Crit group</p>
+      <div class="crit-plate">
+        <h1 id="page-title">{group.name}</h1>
+        <span class="placard-day">{DAY_NAMES[group.day] ?? group.day}s</span>
+      </div>
+      <dl class="slot crit-slot">
+        <dt>Usual</dt>
+        <dd class="time">every {group.day} {group.startTime}–{group.endTime}</dd>
+        <dt>Tutor</dt>
+        <dd>{group.tutorName}</dd>
+        <dt>Room</dt>
+        <dd>{group.room}</dd>
+      </dl>
+    </section>
+
+    {error && <p class="error" role="alert">{error}</p>}
+    <p id="stale-notice" class="notice" role="status" hidden>
+      This group changed in another tab. Your draft below is untouched —
+      reload when you're ready to see the update.
+    </p>
+
+    <div class="section-head">
+      <h2 id="timeline-title">Semester at a glance</h2>
+      <p>
+        {weeks.length} teaching weeks · {moves.length === 0 ? "no moves" : `${moves.length} moved`}
+      </p>
+    </div>
+
+    <div class="timeline-scroll" role="region" aria-labelledby="timeline-title" tabindex="0">
+      <ol class="timeline">
+        {
+          group.sessions.map((s) => {
+            const moved = s.exceptionId !== null;
+            const isNow = current?.week === s.week;
+            const classes = ["tl-week", moved && "is-moved", isNow && "is-now", breakBefore(s.week) && "after-break"]
+              .filter(Boolean)
+              .join(" ");
+            return (
+              <li class={classes} aria-current={isNow ? "date" : undefined} title={moved ? s.reason ?? undefined : undefined}>
+                <span class="tl-num">
+                  <span class="visually-hidden">Week </span>
+                  {String(s.week).padStart(2, "0")}
+                </span>
+                <span class="tl-when">
+                  {s.day} {s.startTime}
+                </span>
+                <span class="tl-date">{fmt(s.date)}</span>
+                {isNow && <span class="tl-flag tl-flag-now">This week</span>}
+                {moved && <span class="tl-flag">Moved</span>}
+                {moved && <span class="visually-hidden">: {s.reason}</span>}
+              </li>
+            );
+          })
+        }
+      </ol>
+    </div>
+
+    <div class="section-head">
+      <h2 id="history-title">Change history</h2>
+      <p>One-week moves. The usual slot stays as it is.</p>
+    </div>
+
+    {
+      moves.length === 0 ? (
+        <p class="steady crit-steady">No moves this semester. Meets at its usual slot every teaching week.</p>
+      ) : (
+        <ul class="moves crit-moves" aria-labelledby="history-title">
+          {moves.map((session) => (
+            <li class="move">
+              <span class="move-when">
+                Week {session.week} · {session.date}
+              </span>
+              <span class="move-where">
+                {session.day} {session.startTime}–{session.endTime} in {session.room}
+              </span>
+              <span class="move-why">{session.reason}</span>
+              <form method="post" action={`/api/exceptions/${session.exceptionId}/cancel`}>
+                <input type="hidden" name="redirect" value={self} />
+                <button class="btn-quiet" type="submit">
+                  Undo move
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+
+    <div class="section-head">
+      <h2 id="slot-title">Change the usual slot</h2>
+      <p>Applies to every week that hasn't been moved.</p>
+    </div>
+
+    <form class="panel" method="post" action={`/api/groups/${group.id}`} aria-labelledby="slot-title">
+      <fieldset>
+        <legend class="visually-hidden">Standing slot for {group.name}</legend>
+
+        <div class="field">
+          <label for="day">Day</label>
+          <select id="day" name="day" required>
+            {DAYS.map((day) => (
+              <option value={day} selected={day === group.day}>
+                {DAY_NAMES[day]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="startTime">Start</label>
+          <input id="startTime" name="startTime" type="time" required value={group.startTime} />
+        </div>
+
+        <div class="field">
+          <label for="endTime">End</label>
+          <input id="endTime" name="endTime" type="time" required value={group.endTime} />
+        </div>
+
+        <div class="field">
+          <label for="tutorName">Tutor</label>
+          <input id="tutorName" name="tutorName" type="text" required value={group.tutorName} />
+        </div>
+
+        <div class="field field-wide">
+          <label for="room">Room</label>
+          <input id="room" name="room" type="text" required value={group.room} />
+        </div>
+
+        <div class="panel-actions">
+          <button class="btn" type="submit">Save usual slot</button>
+        </div>
+      </fieldset>
+    </form>
+  </main>
+  <script>
+    import { createDirtyTracker, createReconnectGate } from "../../lib/live-reload";
+
+    // Same live-sync contract as the roster page: reload when another tab
+    // changes anything, unless this tab has an unsaved edit to the slot form,
+    // in which case show the stale notice and reload once the draft clears.
+    const dirty = createDirtyTracker();
+    const slotForm = document.querySelector<HTMLFormElement>('form[action^="/api/groups/"]');
+    const serialize = (form: HTMLFormElement) =>
+      new URLSearchParams(new FormData(form) as unknown as string[][]).toString();
+    const pristine = slotForm ? serialize(slotForm) : null;
+    slotForm?.addEventListener("input", () => {
+      if (serialize(slotForm) === pristine) {
+        dirty.markClean();
+        if (dirty.claimPendingReload()) location.reload();
+      } else {
+        dirty.markDirty();
+      }
+    });
+
+    const staleNotice = document.getElementById("stale-notice");
+    const reloadUnlessDirty = () => {
+      if (dirty.isDirty()) {
+        dirty.notePendingReload();
+        staleNotice?.removeAttribute("hidden");
+      } else {
+        location.reload();
+      }
+    };
+
+    const source = new EventSource("/api/events");
+    source.addEventListener("message", reloadUnlessDirty);
+    const shouldReloadOnOpen = createReconnectGate();
+    source.addEventListener("open", () => {
+      if (shouldReloadOnOpen()) reloadUnlessDirty();
+    });
+  </script>
+</Base>

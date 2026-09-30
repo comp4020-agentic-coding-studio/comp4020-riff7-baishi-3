@@ -1071,3 +1071,201 @@ a.tt-block.is-dragging {
   padding: 0.6rem 1rem;
   color: var(--slate);
 }
+
+/* ==========================================================================
+   Crit group page (/crit/[agent]) and the roster's links into it.
+   Appended as its own section: nothing above is restructured.
+   ========================================================================== */
+
+/* placard names on the roster link to their crit page */
+.placard-head h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.placard-head h3 a:hover,
+.placard-head h3 a:focus-visible {
+  text-decoration: underline;
+  text-decoration-color: var(--gold);
+  text-decoration-thickness: 3px;
+}
+
+.crit-page {
+  overflow-x: clip; /* no page-level horizontal scroll, whatever the strip does */
+}
+
+.crit-hero {
+  padding: clamp(2rem, 6vw, 4rem) 0 2rem;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 1.25rem;
+}
+
+.crit-hero .eyebrow {
+  margin: 0;
+}
+
+.crit-hero .eyebrow a {
+  color: var(--slate);
+}
+
+/* the room placard, scaled up: black plate, gold rule */
+.crit-plate {
+  background: var(--band);
+  color: var(--band-ink);
+  border-bottom: 5px solid var(--gold);
+  border-radius: var(--radius);
+  padding: clamp(1rem, 3vw, 1.6rem) clamp(1rem, 3vw, 1.75rem);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem 1.5rem;
+}
+
+.crit-plate h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 9vw, 5.5rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 0.9;
+  overflow-wrap: anywhere;
+}
+
+.crit-plate .placard-day {
+  font-size: clamp(0.8rem, 1.6vw, 1rem);
+}
+
+.crit-slot {
+  font-size: 1rem;
+}
+
+.crit-slot .time {
+  font-size: 1.25rem;
+}
+
+/* ---------- semester timeline strip ---------- */
+
+.timeline-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding-bottom: 0.5rem;
+  border-radius: var(--radius);
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(5.5rem, 1fr);
+  gap: 0.35rem;
+  min-width: max-content;
+}
+
+.tl-week {
+  scroll-snap-align: start;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.6rem 0.6rem;
+  display: grid;
+  gap: 0.1rem;
+  align-content: start;
+  min-height: 6.5rem;
+}
+
+.tl-num {
+  font-family: var(--display);
+  font-stretch: 125%;
+  font-weight: 900;
+  font-size: 1.6rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--slate);
+}
+
+.tl-when {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.tl-date {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--slate);
+  white-space: nowrap;
+}
+
+.tl-flag {
+  justify-self: start;
+  margin-top: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.tl-week.is-moved {
+  background: var(--moved-wash);
+  border-color: var(--moved);
+  border-top-color: var(--moved);
+  color: var(--moved);
+}
+
+.tl-week.is-moved .tl-num,
+.tl-week.is-moved .tl-date {
+  color: var(--moved);
+}
+
+.tl-week.is-now {
+  border-color: var(--gold);
+  border-top-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.tl-week.is-now .tl-num {
+  color: var(--gold-ink);
+}
+
+.tl-week.is-now .tl-flag-now {
+  color: var(--gold-ink);
+}
+
+/* the mid-semester break: a dashed gap before the first week after it */
+.tl-week.after-break {
+  margin-left: 0.9rem;
+  position: relative;
+}
+
+.tl-week.after-break::before {
+  content: "";
+  position: absolute;
+  left: calc(-0.35rem - 0.9rem / 2 - 1px);
+  top: 0.4rem;
+  bottom: 0.4rem;
+  border-left: 2px dashed var(--line);
+}
+
+/* ---------- change history ---------- */
+
+.crit-moves {
+  border-top: 0;
+  padding-top: 0;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+}
+
+.crit-steady {
+  border-top: 0;
+  padding-top: 0;
+  font-size: 0.95rem;
+}
