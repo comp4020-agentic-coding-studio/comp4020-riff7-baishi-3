@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, inject, it } from "vitest";
 import { createDirtyTracker, createReconnectGate } from "../src/lib/live-reload";
 import { sessionDate } from "../src/lib/db";
+import { rangeFrom, snap, toHHMM, toMin } from "../src/lib/planner";
 
 // This week's brief: model a slice of a real ANU system, wired end to end,
 // with a core flow that survives a reload. The roster's core flow is
@@ -314,5 +315,43 @@ describe("cancelling a reschedule", () => {
 
     const html = await (await fetch(baseUrl)).text();
     expect(html).not.toContain("to be cancelled");
+  });
+});
+
+describe("planner time helpers", () => {
+  // The timetable and time bar turn pointer positions into form values;
+  // these are the pure pieces that decide what lands in startTime/endTime.
+  it("round-trips HH:MM and minutes", () => {
+    expect(toMin("09:30")).toBe(570);
+    expect(toHHMM(570)).toBe("09:30");
+    expect(toHHMM(toMin("15:45"))).toBe("15:45");
+  });
+
+  it("snaps to quarter hours within bounds", () => {
+    expect(snap(9 * 60 + 7)).toBe(9 * 60);
+    expect(snap(9 * 60 + 8)).toBe(9 * 60 + 15);
+    expect(snap(7 * 60, 15, 8 * 60, 19 * 60)).toBe(8 * 60);
+    expect(snap(20 * 60, 15, 8 * 60, 19 * 60)).toBe(19 * 60);
+  });
+
+  it("orders a drag range either way and never makes it empty", () => {
+    expect(rangeFrom(660, 600)).toEqual([600, 660]);
+    expect(rangeFrom(600, 600)).toEqual([600, 615]);
+  });
+});
+
+describe("visual reschedule form", () => {
+  it("keeps real radios for group, week and day so it works without script", async () => {
+    const html = await (await fetch(baseUrl)).text();
+    expect(html).toMatch(/type="radio" name="critGroupId"/);
+    expect(html).toMatch(/type="radio" name="week"/);
+    expect(html).toMatch(/type="radio" name="day"/);
+  });
+
+  it("renders the week timetable with draggable session blocks", async () => {
+    const html = await (await fetch(new URL("/?week=9", baseUrl))).text();
+    expect(html).toContain("Week 9 timetable");
+    expect(html).toMatch(/class="tt-block[^"]*is-moved/);
+    expect(html).toContain("tt-ghost");
   });
 });

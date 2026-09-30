@@ -39,6 +39,7 @@ const dayDate = (i: number) =>
 
 type Block = {
   kind: "session" | "ghost";
+  id: number;
   groupIndex: number;
   name: string;
   agent: string;
@@ -60,6 +61,7 @@ roster.forEach((group, groupIndex) => {
   const moved = session.exceptionId !== null;
   blocks.push({
     kind: "session",
+    id: group.id,
     groupIndex,
     name: group.name,
     agent: group.agent,
@@ -75,6 +77,7 @@ roster.forEach((group, groupIndex) => {
   if (moved) {
     blocks.push({
       kind: "ghost",
+      id: group.id,
       groupIndex,
       name: group.name,
       agent: group.agent,
@@ -132,7 +135,7 @@ const breakBefore = (i: number) =>
   i > 0 && addDays(weeks[i - 1].monday, 7).toISOString().slice(0, 10) !== weeks[i].monday;
 ---
 
-<section class="timetable" id="timetable" aria-labelledby="timetable-title">
+<section class="timetable" id="timetable" aria-labelledby="timetable-title" data-week={week.week}>
   <div class="section-head">
     <h2 id="timetable-title">
       Week {week.week} timetable
@@ -167,7 +170,11 @@ const breakBefore = (i: number) =>
   </nav>
 
   <div class="tt-scroll">
+    <p class="tt-hint" id="tt-hint">
+      Drag a session to move it for this week, or click an empty slot to start a move there.
+    </p>
     <div class="tt-grid" style={`--rows: ${rows}`}>
+      <div class="tt-selection" hidden aria-hidden="true"></div>
       <div class="tt-corner" aria-hidden="true"></div>
       {
         DAYS.map((d, i) => (
@@ -203,6 +210,10 @@ const breakBefore = (i: number) =>
               href={`#group-${b.agent}`}
               class:list={["tt-block", `g${b.groupIndex}`, { "is-moved": b.moved }]}
               style={`grid-column: ${b.day + 2}; grid-row: ${row(b.start)} / ${row(b.end)}; --lane: ${b.lane}; --lanes: ${b.lanes}`}
+              data-group-id={b.id}
+              data-name={b.name}
+              data-duration={b.end - b.start}
+              draggable="false"
               aria-label={`${b.name}, ${DAY_NAMES[b.day]} ${toHHMM(b.start)} to ${toHHMM(b.end)}, ${b.room}${b.moved ? ", moved this week" : ""}`}
             >
               <span class="tt-name">{b.name}</span>

@@ -148,69 +148,132 @@ const selectedWeek = weeks.some((w) => w.week === requested)
       <p>For one teaching week only. The usual slot stays as it is.</p>
     </div>
 
-    <form class="panel" method="post" action="/api/exceptions" aria-labelledby="reschedule-title">
-      <fieldset>
-        <legend class="visually-hidden">Reschedule a session</legend>
-
-        <div class="field">
-          <label for="critGroupId">Crit group</label>
-          <select id="critGroupId" name="critGroupId" required>
-            {roster.map((group) => (
-              <option value={group.id}>
-                {group.name} ({group.day} {group.startTime}–{group.endTime})
-              </option>
-            ))}
-          </select>
+    <form class="panel" method="post" action="/api/exceptions" aria-labelledby="reschedule-title" id="move-form">
+      <fieldset class="pick">
+        <legend>Crit group</legend>
+        <div class="group-chips">
+          {roster.map((group, i) => {
+            const [sh, sm] = group.startTime.split(":").map(Number);
+            const [eh, em] = group.endTime.split(":").map(Number);
+            return (
+              <label class={`chip g${i}`}>
+                <input
+                  type="radio"
+                  name="critGroupId"
+                  value={group.id}
+                  required
+                  data-duration={eh * 60 + em - (sh * 60 + sm)}
+                  data-room={group.room}
+                />
+                <span class="chip-name">{group.name}</span>
+                <span class="chip-meta">
+                  {group.day} {group.startTime}–{group.endTime}
+                </span>
+                <span class="chip-meta">{group.tutorName}</span>
+              </label>
+            );
+          })}
         </div>
+      </fieldset>
 
-        <div class="field">
-          <label for="week">Teaching week</label>
-          <select id="week" name="week" required>
-            {weeks.map((w) => (
-              <option value={w.week} selected={w.week === current?.week}>
-                Week {w.week} ({w.monday})
-              </option>
-            ))}
-          </select>
+      <fieldset class="pick">
+        <legend>Teaching week</legend>
+        <div class="week-pills">
+          {weeks.map((w, i) => (
+            <>
+              {i > 0 && addDays(weeks[i - 1].monday, 7) !== w.monday && (
+                <span class="week-break" aria-hidden="true">break</span>
+              )}
+              <label class="pill">
+                <input type="radio" name="week" value={w.week} required checked={w.week === selectedWeek} />
+                <span>
+                  <span class="visually-hidden">Week </span>
+                  {String(w.week).padStart(2, "0")}
+                </span>
+              </label>
+            </>
+          ))}
         </div>
+      </fieldset>
 
-        <div class="field">
-          <label for="day">New day</label>
-          <select id="day" name="day" required>
-            {DAYS.map((day) => (
-              <option value={day}>{day}</option>
-            ))}
-          </select>
+      <fieldset class="pick">
+        <legend>New day</legend>
+        <div class="day-pills">
+          {DAYS.map((day) => (
+            <label class="pill pill-day">
+              <input type="radio" name="day" value={day} required />
+              <span>{DAY_NAMES[day]}</span>
+            </label>
+          ))}
         </div>
+      </fieldset>
 
-        <div class="field">
-          <label for="startTime">New start</label>
-          <input id="startTime" name="startTime" type="time" required />
+      <fieldset class="pick">
+        <legend>New time</legend>
+        <div class="time-track" aria-hidden="true" data-from="08:00" data-to="19:00">
+          <div class="time-track-range" hidden></div>
+          {Array.from({ length: 11 }, (_, i) => (
+            <span class="time-track-tick" style={`--at: ${i / 11}`}>{String(8 + i).padStart(2, "0")}</span>
+          ))}
         </div>
-
-        <div class="field">
-          <label for="endTime">New end</label>
-          <input id="endTime" name="endTime" type="time" required />
+        <p class="pick-hint" aria-hidden="true">Drag along the bar to set the time, or type it in.</p>
+        <div class="time-fields">
+          <div class="field">
+            <label for="startTime">Start</label>
+            <input id="startTime" name="startTime" type="time" step="900" required />
+          </div>
+          <div class="field">
+            <label for="endTime">End</label>
+            <input id="endTime" name="endTime" type="time" step="900" required />
+          </div>
         </div>
+      </fieldset>
 
+      <div class="panel-row">
         <div class="field">
           <label for="room">Room</label>
           <input id="room" name="room" type="text" placeholder="Usual room if blank" />
         </div>
-
-        <div class="field field-wide">
+        <div class="field">
           <label for="reason">Reason</label>
           <input id="reason" name="reason" type="text" required placeholder="e.g. Public holiday on the usual day" />
         </div>
+      </div>
 
-        <div class="panel-actions">
+      <div class="panel-actions">
+        <output class="move-summary" id="move-summary" for="startTime endTime"></output>
+        <button class="btn" type="submit">Move session</button>
+      </div>
+    </form>
+
+    <dialog class="move-dialog" id="move-dialog" aria-labelledby="move-dialog-title">
+      <form method="post" action="/api/exceptions" id="dialog-form">
+        <p class="eyebrow">Move for one week</p>
+        <h2 id="move-dialog-title">Move session</h2>
+        <p class="move-dialog-summary" id="move-dialog-summary"></p>
+        <input type="hidden" name="critGroupId" />
+        <input type="hidden" name="week" />
+        <input type="hidden" name="day" />
+        <input type="hidden" name="startTime" />
+        <input type="hidden" name="endTime" />
+        <div class="field">
+          <label for="dialog-reason">Reason</label>
+          <input id="dialog-reason" name="reason" type="text" required placeholder="e.g. Tutor away, swapped with Thursday" />
+        </div>
+        <div class="field">
+          <label for="dialog-room">Room</label>
+          <input id="dialog-room" name="room" type="text" placeholder="Usual room if blank" />
+        </div>
+        <div class="dialog-actions">
+          <button class="btn-quiet" type="button" value="cancel" id="dialog-cancel">Keep it where it is</button>
           <button class="btn" type="submit">Move session</button>
         </div>
-      </fieldset>
-    </form>
+      </form>
+    </dialog>
   </main>
   <script>
       import { createDirtyTracker, createReconnectGate } from "../lib/live-reload";
+      import { initPlanner } from "../lib/planner";
 
       // The live half of the roster: reload on any change reported over the
       // SSE stream, so a tutor watching this page sees a reschedule made in
@@ -244,6 +307,18 @@ const selectedWeek = weeks.some((w) => w.week === requested)
         } else {
           dirty.markDirty();
         }
+      });
+
+      // The planner's gestures (timetable clicks, the time bar) write into
+      // the form without firing `input`, so re-run the same comparison by
+      // hand; an open drop dialog is a draft too, whatever the form says.
+      const recheckDraft = () => rescheduleForm?.dispatchEvent(new Event("input"));
+      initPlanner({
+        onDraft: recheckDraft,
+        onDialog: (open) => {
+          if (open) dirty.markDirty();
+          else recheckDraft();
+        },
       });
 
       const staleNotice = document.getElementById("stale-notice");

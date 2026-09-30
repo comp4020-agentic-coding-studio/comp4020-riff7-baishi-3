@@ -443,30 +443,13 @@ button {
 /* ---------- reschedule panel ---------- */
 
 .panel {
+  display: grid;
+  gap: 1.75rem;
   background: var(--card);
   border: 1px solid var(--line);
   border-top: 4px solid var(--gold);
   border-radius: var(--radius);
   padding: clamp(1.1rem, 3vw, 2rem);
-}
-
-.panel fieldset {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
-  gap: 1rem 1.25rem;
-}
-
-.panel legend {
-  font-family: var(--display);
-  font-stretch: 125%;
-  font-weight: 800;
-  font-size: clamp(1.3rem, 2.5vw, 1.7rem);
-  padding: 0;
-  margin-bottom: 1.25rem;
 }
 
 .field {
@@ -510,9 +493,11 @@ select:focus-visible {
 }
 
 .panel-actions {
-  grid-column: 1 / -1;
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
 }
 
 /* ---------- about page prose ---------- */
@@ -796,4 +781,293 @@ a.tt-block:hover {
 
 .placard .placard-head {
   border-bottom-color: var(--g, var(--gold));
+}
+
+/* ---------- visual pickers ---------- */
+
+.pick {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.pick legend {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  padding: 0;
+  margin-bottom: 0.6rem;
+}
+
+/* the radio stays real and focusable, just out of sight */
+.chip input,
+.pill input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.group-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  gap: 0.5rem;
+}
+
+.chip {
+  position: relative;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.7rem 0.8rem 0.7rem 1rem;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--g);
+  border-radius: var(--radius);
+  background: var(--paper);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chip:hover {
+  background: color-mix(in srgb, var(--g) 8%, var(--paper));
+}
+
+.chip-name {
+  font-family: var(--display);
+  font-stretch: 112%;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.chip-meta {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--slate);
+}
+
+.chip:has(input:checked) {
+  background: color-mix(in srgb, var(--g) 16%, var(--card));
+  border-color: var(--g);
+  box-shadow: inset 0 0 0 1px var(--g);
+}
+
+.chip:has(input:checked)::after {
+  content: "";
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--g);
+}
+
+.week-pills,
+.day-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.pill span {
+  display: grid;
+  place-items: center;
+  min-width: 2.6rem;
+  height: 2.6rem;
+  padding: 0 0.6rem;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.pill-day span {
+  min-width: 6.5rem;
+  font-family: var(--body);
+}
+
+.pill:hover span {
+  border-color: var(--gold);
+}
+
+.pill input:checked + span {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #141414;
+}
+
+.chip:has(input:focus-visible),
+.pill input:focus-visible + span {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.time-track {
+  position: relative;
+  height: 3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(100% / 44 - 1px),
+      var(--line) calc(100% / 44 - 1px),
+      var(--line) calc(100% / 44)
+    ),
+    var(--paper);
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.time-track-tick {
+  position: absolute;
+  left: calc(var(--at) * 100%);
+  bottom: 0.2rem;
+  padding-left: 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--slate);
+  border-left: 1px solid var(--slate);
+  line-height: 1;
+  height: 1.3rem;
+  pointer-events: none;
+}
+
+.time-track-range {
+  position: absolute;
+  top: 0.35rem;
+  height: 1.1rem;
+  background: var(--gold);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.pick-hint {
+  margin: 0.4rem 0 0.8rem;
+  font-size: 0.8rem;
+  color: var(--slate);
+}
+
+.time-fields,
+.panel-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 1rem 1.25rem;
+}
+
+.time-fields {
+  max-width: 26rem;
+}
+
+.move-summary {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--slate);
+}
+
+.panel.is-primed {
+  animation: primed 1.2s ease-out;
+}
+
+@keyframes primed {
+  from {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 50%, transparent);
+  }
+}
+
+/* ---------- timetable interactions ---------- */
+
+.tt-hint {
+  margin: 0;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.8rem;
+  color: var(--slate);
+  border-bottom: 1px solid var(--line);
+}
+
+.tt-cell {
+  cursor: cell;
+}
+
+.tt-cell:hover {
+  background: color-mix(in srgb, var(--gold) 7%, transparent);
+}
+
+a.tt-block {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+a.tt-block.is-dragging {
+  cursor: grabbing;
+  z-index: 5;
+  opacity: 0.85;
+  box-shadow: 0 12px 28px -10px rgb(0 0 0 / 0.5);
+  transition: none;
+}
+
+.tt-selection {
+  z-index: 0;
+  margin: 2px 3px;
+  border: 2px dashed var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+
+/* ---------- drop dialog ---------- */
+
+.move-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--gold);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.move-dialog::backdrop {
+  background: rgb(10 10 10 / 0.55);
+}
+
+.move-dialog h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.move-dialog form {
+  display: grid;
+  gap: 1rem;
+}
+
+.move-dialog-summary {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--moved-wash);
+  color: var(--moved);
+  border-left: 3px solid var(--moved);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.dialog-actions .btn-quiet {
+  padding: 0.6rem 1rem;
+  color: var(--slate);
 }
